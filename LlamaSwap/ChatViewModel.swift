@@ -18,7 +18,9 @@ class ChatViewModel {
     var selectedModel: String = "" {
         didSet { loadState = runningModels.contains(selectedModel) ? .loaded : .unloaded }
     }
-    var systemPrompt: String = ""
+    var systemPrompt: String = "" {
+        didSet { Keychain.save(systemPrompt, key: "systemPrompt") }
+    }
     var messages: [ChatMessage] = []
     var inputText: String = ""
     var isStreaming = false
@@ -46,6 +48,7 @@ class ChatViewModel {
 
     init() {
         serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://192.168.8.117:8081"
+        systemPrompt = Keychain.load(key: "systemPrompt") ?? ""
     }
 
     func fetchModels() async {
