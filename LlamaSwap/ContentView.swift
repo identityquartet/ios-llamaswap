@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var vm = ChatViewModel()
     @State private var showSettings = false
     @State private var showSystemPrompt = false
@@ -46,6 +47,11 @@ struct ContentView: View {
             SettingsSheet(vm: vm)
         }
         .task { await vm.fetchModels() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await vm.fetchRunning() }
+            }
+        }
     }
 }
 

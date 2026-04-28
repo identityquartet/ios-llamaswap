@@ -76,7 +76,12 @@ class ChatViewModel {
         let names = Set(resp.running.map { $0.model })
         await MainActor.run {
             runningModels = names
-            loadState = names.contains(selectedModel) ? .loaded : .unloaded
+            if let running = names.first(where: { models.contains($0) }) {
+                selectedModel = running
+                loadState = .loaded
+            } else {
+                loadState = runningModels.contains(selectedModel) ? .loaded : .unloaded
+            }
         }
     }
 
