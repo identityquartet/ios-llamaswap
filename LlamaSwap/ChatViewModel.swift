@@ -13,6 +13,9 @@ class ChatViewModel {
     var serverURL: String {
         didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") }
     }
+    var defaultModel: String {
+        didSet { UserDefaults.standard.set(defaultModel, forKey: "defaultModel") }
+    }
     var models: [String] = []
     var runningModels: Set<String> = []
     var selectedModel: String = "" {
@@ -48,6 +51,7 @@ class ChatViewModel {
 
     init() {
         serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://192.168.8.117:8081"
+        defaultModel = UserDefaults.standard.string(forKey: "defaultModel") ?? ""
         systemPrompt = Keychain.load(key: "systemPrompt") ?? ""
     }
 
@@ -63,7 +67,10 @@ class ChatViewModel {
             let ids = resp.data.map { $0.id }.sorted()
             await MainActor.run {
                 models = ids
-                if !ids.contains(selectedModel), let first = ids.first { selectedModel = first }
+                if !ids.contains(selectedModel) {
+                    // Prefer defaultModel, fall back to first
+                    selectedModel = (!defaultModel.isEmpty && ids.contains(defaultModel)) ? defaultModel : (ids.first ?? "")
+                }
             }
         } catch {
             await MainActor.run { errorMessage = "Cannot reach server: \(error.localizedDescription)" }
@@ -83,7 +90,11 @@ class ChatViewModel {
                 selectedModel = running
                 loadState = .loaded
             } else {
-                loadState = runningModels.contains(selectedModel) ? .loaded : .unloaded
+                // No model running — select defaultModel if set, otherwise keep current
+                if !defaultModel.isEmpty && models.contains(defaultModel) {
+                    selectedModel = defaultModel
+                }
+                loadState = .unloaded
             }
         }
     }

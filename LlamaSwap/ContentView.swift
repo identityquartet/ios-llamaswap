@@ -233,6 +233,16 @@ struct SettingsSheet: View {
                     Text("The address of your llama-swap instance.")
                 }
                 Section {
+                    Picker("Default Model", selection: $vm.defaultModel) {
+                        Text("None").tag("")
+                        ForEach(vm.models, id: \.self) { Text($0).tag($0) }
+                    }
+                } header: {
+                    Text("Default Model")
+                } footer: {
+                    Text("Auto-selected when no model is currently loaded.")
+                }
+                Section {
                     Button("Save & Reconnect") {
                         vm.serverURL = draft
                         Task { await vm.fetchModels() }
