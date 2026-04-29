@@ -101,6 +101,9 @@ class ChatViewModel {
 
     func loadModel() async {
         await MainActor.run { loadState = .loading }
+        let bgTask = BGTaskHandle()
+        bgTask.begin(name: "LlamaLoad")
+        defer { bgTask.end() }
         guard let url = URL(string: "\(serverURL)/v1/chat/completions") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -139,6 +142,10 @@ class ChatViewModel {
     func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isStreaming else { return }
+
+        let bgTask = BGTaskHandle()
+        bgTask.begin(name: "LlamaChat")
+        defer { bgTask.end() }
 
         await MainActor.run {
             messages.append(ChatMessage(role: "user", content: text))
