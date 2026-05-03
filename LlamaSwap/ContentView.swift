@@ -394,7 +394,7 @@ private struct SegmentView: View {
         case .prose:
             if let attr = try? AttributedString(
                 markdown: segment.text,
-                options: .init(interpretedSyntax: .inlinesOnlyPreservingWhitespace)
+                options: .init(interpretedSyntax: .inlinesOnly)
             ) {
                 Text(attr).textSelection(.enabled)
             } else {
