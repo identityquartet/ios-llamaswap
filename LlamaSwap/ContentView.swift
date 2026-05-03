@@ -376,23 +376,31 @@ struct MarkdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(parseSegments(text)) { seg in
-                switch seg.kind {
-                case .code(let lang):
-                    CodeBlockView(code: seg.text, language: lang)
-                case .prose:
-                    if let attr = try? AttributedString(
-                        markdown: seg.text,
-                        options: .init(interpretedSyntax: .inlinesOnlyPreservingWhitespace)
-                    ) {
-                        Text(attr).textSelection(.enabled)
-                    } else {
-                        Text(seg.text).textSelection(.enabled)
-                    }
-                }
+            ForEach(parseSegments(text), id: \.id) { seg in
+                SegmentView(segment: seg)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SegmentView: View {
+    let segment: Segment
+
+    var body: some View {
+        switch segment.kind {
+        case .code(let lang):
+            CodeBlockView(code: segment.text, language: lang)
+        case .prose:
+            if let attr = try? AttributedString(
+                markdown: segment.text,
+                options: .init(interpretedSyntax: .inlinesOnlyPreservingWhitespace)
+            ) {
+                Text(attr).textSelection(.enabled)
+            } else {
+                Text(segment.text).textSelection(.enabled)
+            }
+        }
     }
 }
 
