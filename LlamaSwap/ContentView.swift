@@ -249,7 +249,7 @@ struct SystemPromptBar: View {
                         ForEach(vm.presets.keys.sorted(), id: \.self) { name in
                             Button(role: .destructive) {
                                 vm.presets.removeValue(forKey: name)
-                            } label: { Label("Delete "\(name)"", systemImage: "trash") }
+                            } label: { Label("Delete \"\(name)\"", systemImage: "trash") }
                         }
                     } label: {
                         Label("Presets", systemImage: "list.bullet").font(.caption)
