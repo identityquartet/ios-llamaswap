@@ -1,11 +1,17 @@
 import Foundation
 import SwiftUI
+import SwiftData
 
 struct ChatMessage: Identifiable {
     let id = UUID()
     let role: String
     var content: String
     var isUser: Bool { role == "user" }
+}
+
+struct TokenUsage {
+    let promptTokens: Int
+    let completionTokens: Int
 }
 
 @Observable
@@ -16,6 +22,13 @@ class ChatViewModel {
     var defaultModel: String {
         didSet { UserDefaults.standard.set(defaultModel, forKey: "defaultModel") }
     }
+    var temperature: Double {
+        didSet { UserDefaults.standard.set(temperature, forKey: "temperature") }
+    }
+    var maxTokens: Int {
+        didSet { UserDefaults.standard.set(maxTokens, forKey: "maxTokens") }
+    }
+
     var models: [String] = []
     var runningModels: Set<String> = []
     var selectedModel: String = "" {
@@ -24,12 +37,24 @@ class ChatViewModel {
     var systemPrompt: String = "" {
         didSet { Keychain.save(systemPrompt, key: "systemPrompt") }
     }
+    var presets: [String: String] {
+        didSet {
+            if let data = try? JSONEncoder().encode(presets) {
+                UserDefaults.standard.set(data, forKey: "systemPromptPresets")
+            }
+        }
+    }
+
     var messages: [ChatMessage] = []
     var inputText: String = ""
     var isStreaming = false
     var loadState: LoadState = .unloaded
     var errorMessage: String?
     var isFetchingModels = false
+    var tokenUsage: TokenUsage?
+    var conversation: Conversation?
+
+    private var streamTask: Task<Void, Never>?
 
     enum LoadState {
         case unloaded, loading, loaded
@@ -49,16 +74,32 @@ class ChatViewModel {
         }
     }
 
-    init() {
-        serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://192.168.8.117:8081"
+    init(conversation: Conversation? = nil) {
+        serverURL    = UserDefaults.standard.string(forKey: "serverURL") ?? "http://192.168.8.117:8081"
         defaultModel = UserDefaults.standard.string(forKey: "defaultModel") ?? ""
+        temperature  = UserDefaults.standard.object(forKey: "temperature") as? Double ?? 0.7
+        maxTokens    = UserDefaults.standard.object(forKey: "maxTokens") as? Int ?? 0
         systemPrompt = Keychain.load(key: "systemPrompt") ?? ""
+
+        if let data = UserDefaults.standard.data(forKey: "systemPromptPresets"),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            presets = decoded
+        } else {
+            presets = [:]
+        }
+
+        self.conversation = conversation
+        if let conv = conversation {
+            let sorted = conv.messages.sorted { $0.createdAt < $1.createdAt }
+            messages = sorted.map { ChatMessage(role: $0.role, content: $0.content) }
+        }
     }
+
+    // MARK: - Server
 
     func fetchModels() async {
         await MainActor.run { isFetchingModels = true; errorMessage = nil }
         defer { Task { @MainActor in isFetchingModels = false } }
-
         guard let url = URL(string: "\(serverURL)/v1/models") else { return }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
@@ -68,8 +109,8 @@ class ChatViewModel {
             await MainActor.run {
                 models = ids
                 if !ids.contains(selectedModel) {
-                    // Prefer defaultModel, fall back to first
-                    selectedModel = (!defaultModel.isEmpty && ids.contains(defaultModel)) ? defaultModel : (ids.first ?? "")
+                    selectedModel = (!defaultModel.isEmpty && ids.contains(defaultModel))
+                        ? defaultModel : (ids.first ?? "")
                 }
             }
         } catch {
@@ -87,13 +128,9 @@ class ChatViewModel {
         await MainActor.run {
             runningModels = names
             if let running = names.first(where: { models.contains($0) }) {
-                selectedModel = running
-                loadState = .loaded
+                selectedModel = running; loadState = .loaded
             } else {
-                // No model running — select defaultModel if set, otherwise keep current
-                if !defaultModel.isEmpty && models.contains(defaultModel) {
-                    selectedModel = defaultModel
-                }
+                if !defaultModel.isEmpty && models.contains(defaultModel) { selectedModel = defaultModel }
                 loadState = .unloaded
             }
         }
@@ -101,8 +138,7 @@ class ChatViewModel {
 
     func loadModel() async {
         await MainActor.run { loadState = .loading }
-        let bgTask = BGTaskHandle()
-        bgTask.begin(name: "LlamaLoad")
+        let bgTask = BGTaskHandle(); bgTask.begin(name: "LlamaLoad")
         defer { bgTask.end() }
         guard let url = URL(string: "\(serverURL)/v1/chat/completions") else { return }
         var req = URLRequest(url: url)
@@ -112,8 +148,7 @@ class ChatViewModel {
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "model": selectedModel,
             "messages": [["role": "user", "content": "hi"]],
-            "max_tokens": 1,
-            "stream": false
+            "max_tokens": 1, "stream": false
         ])
         do {
             let (_, resp) = try await URLSession.shared.data(for: req)
@@ -129,29 +164,64 @@ class ChatViewModel {
 
     func unloadModel() async {
         guard let url = URL(string: "\(serverURL)/api/models/unload/\(selectedModel)") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 30
+        var req = URLRequest(url: url); req.httpMethod = "POST"; req.timeoutInterval = 30
         _ = try? await URLSession.shared.data(for: req)
-        await MainActor.run {
-            runningModels.remove(selectedModel)
-            loadState = .unloaded
-        }
+        await MainActor.run { runningModels.remove(selectedModel); loadState = .unloaded }
     }
 
-    func sendMessage() async {
+    // MARK: - Chat
+
+    func stopStreaming() {
+        streamTask?.cancel()
+    }
+
+    func sendMessage(context: ModelContext) async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isStreaming else { return }
 
-        let bgTask = BGTaskHandle()
-        bgTask.begin(name: "LlamaChat")
-        defer { bgTask.end() }
+        if loadState != .loaded {
+            await loadModel()
+            guard loadState == .loaded else { return }
+        }
 
+        if conversation == nil {
+            let conv = Conversation(title: String(text.prefix(60)))
+            context.insert(conv)
+            conversation = conv
+            try? context.save()
+        }
+
+        await MainActor.run { messages.append(ChatMessage(role: "user", content: text)); inputText = "" }
+
+        if let conv = conversation {
+            conv.messages.append(StoredMessage(role: "user", content: text))
+            try? context.save()
+        }
+
+        await streamResponse(context: context)
+    }
+
+    func regenerateLastResponse(context: ModelContext) async {
+        guard !isStreaming, messages.last?.isUser == false, messages.count >= 2 else { return }
+
+        await MainActor.run { messages.removeLast() }
+
+        if let conv = conversation {
+            let sorted = conv.messages.sorted { $0.createdAt < $1.createdAt }
+            if let last = sorted.last, last.role == "assistant" {
+                context.delete(last)
+                try? context.save()
+            }
+        }
+
+        await streamResponse(context: context)
+    }
+
+    private func streamResponse(context: ModelContext) async {
         await MainActor.run {
-            messages.append(ChatMessage(role: "user", content: text))
             messages.append(ChatMessage(role: "assistant", content: ""))
-            inputText = ""
             isStreaming = true
+            tokenUsage = nil
         }
 
         var apiMessages: [[String: String]] = []
@@ -162,41 +232,79 @@ class ChatViewModel {
             apiMessages.append(["role": msg.role, "content": msg.content])
         }
 
-        guard let url = URL(string: "\(serverURL)/v1/chat/completions") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 300
-        req.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "model": selectedModel,
-            "messages": apiMessages,
-            "stream": true
-        ])
+        let bgTask = BGTaskHandle(); bgTask.begin(name: "LlamaChat")
 
-        do {
-            let (stream, _) = try await URLSession.shared.bytes(for: req)
-            struct Chunk: Decodable {
-                struct Choice: Decodable {
-                    struct Delta: Decodable { let content: String? }
-                    let delta: Delta
+        streamTask = Task {
+            defer { Task { @MainActor in isStreaming = false }; bgTask.end() }
+
+            guard let url = URL(string: "\(serverURL)/v1/chat/completions") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.timeoutInterval = 300
+
+            var body: [String: Any] = [
+                "model": selectedModel,
+                "messages": apiMessages,
+                "stream": true,
+                "stream_options": ["include_usage": true],
+                "temperature": temperature,
+            ]
+            if maxTokens > 0 { body["max_tokens"] = maxTokens }
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+            do {
+                let (stream, _) = try await URLSession.shared.bytes(for: req)
+                struct Chunk: Decodable {
+                    struct Choice: Decodable {
+                        struct Delta: Decodable { let content: String? }
+                        let delta: Delta
+                    }
+                    let choices: [Choice]
+                    struct Usage: Decodable { let prompt_tokens: Int; let completion_tokens: Int }
+                    let usage: Usage?
                 }
-                let choices: [Choice]
+                for try await line in stream.lines {
+                    if Task.isCancelled { break }
+                    guard line.hasPrefix("data: "), line != "data: [DONE]",
+                          let data = line.dropFirst(6).data(using: .utf8),
+                          let chunk = try? JSONDecoder().decode(Chunk.self, from: data)
+                    else { continue }
+                    if let content = chunk.choices.first?.delta.content {
+                        await MainActor.run { messages[messages.count - 1].content += content }
+                    }
+                    if let u = chunk.usage {
+                        await MainActor.run {
+                            tokenUsage = TokenUsage(promptTokens: u.prompt_tokens,
+                                                    completionTokens: u.completion_tokens)
+                        }
+                    }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        messages[messages.count - 1].content = "Error: \(error.localizedDescription)"
+                    }
+                }
             }
-            for try await line in stream.lines {
-                guard line.hasPrefix("data: "), line != "data: [DONE]",
-                      let data = line.dropFirst(6).data(using: .utf8),
-                      let chunk = try? JSONDecoder().decode(Chunk.self, from: data),
-                      let content = chunk.choices.first?.delta.content
-                else { continue }
-                await MainActor.run { messages[messages.count - 1].content += content }
-            }
-        } catch {
-            await MainActor.run {
-                messages[messages.count - 1].content = "Error: \(error.localizedDescription)"
+
+            let assistantContent = await MainActor.run { messages.last?.content ?? "" }
+            if let conv = conversation, !assistantContent.isEmpty, !Task.isCancelled {
+                conv.messages.append(StoredMessage(role: "assistant", content: assistantContent))
+                try? context.save()
             }
         }
-        await MainActor.run { isStreaming = false }
+
+        await streamTask?.value
     }
 
-    func clearChat() { messages = [] }
+    func clearChat(context: ModelContext) {
+        messages = []
+        tokenUsage = nil
+        if let conv = conversation {
+            for msg in conv.messages { context.delete(msg) }
+            conv.messages = []
+            try? context.save()
+        }
+    }
 }

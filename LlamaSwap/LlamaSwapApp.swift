@@ -1,12 +1,14 @@
 import SwiftUI
+import SwiftData
 import UIKit
 
 @main
 struct LlamaSwapApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
+        .modelContainer(for: Conversation.self)
     }
 }
 
