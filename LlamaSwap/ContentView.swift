@@ -392,10 +392,7 @@ private struct SegmentView: View {
         case .code(let lang):
             CodeBlockView(code: segment.text, language: lang)
         case .prose:
-            if let attr = try? AttributedString(
-                markdown: segment.text,
-                options: .init(interpretedSyntax: .inlinesOnly)
-            ) {
+            if let attr = try? AttributedString(markdown: segment.text) {
                 Text(attr).textSelection(.enabled)
             } else {
                 Text(segment.text).textSelection(.enabled)
