@@ -400,10 +400,29 @@ private struct SegmentView: View {
         case .code(let lang):
             CodeBlockView(code: segment.text, language: lang)
         case .prose:
-            if let attr = try? AttributedString(markdown: segment.text) {
-                Text(attr).textSelection(.enabled)
-            } else {
-                Text(segment.text).textSelection(.enabled)
+            ProseView(text: segment.text)
+        }
+    }
+}
+
+private struct ProseView: View {
+    let text: String
+
+    private var lines: [(Int, String)] {
+        text.components(separatedBy: "\n")
+            .enumerated()
+            .filter { !$0.element.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map { ($0.offset, $0.element) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(lines, id: \.0) { _, line in
+                if let attr = try? AttributedString(markdown: line) {
+                    Text(attr).textSelection(.enabled)
+                } else {
+                    Text(line).textSelection(.enabled)
+                }
             }
         }
     }
