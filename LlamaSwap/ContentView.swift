@@ -213,7 +213,15 @@ struct ModelBar: View {
 
             switch vm.loadState {
             case .loading:
-                ProgressView().scaleEffect(0.8).frame(width: 60)
+                HStack(spacing: 4) {
+                    ProgressView().scaleEffect(0.8)
+                    if let start = vm.loadingStartTime {
+                        Text(start, style: .timer)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(minWidth: 70)
             case .loaded:
                 Button("Unload") { Task { await vm.unloadModel() } }
                     .buttonStyle(.bordered).tint(.orange).controlSize(.small)

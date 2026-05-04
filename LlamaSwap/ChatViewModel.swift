@@ -49,6 +49,7 @@ class ChatViewModel {
     var inputText: String = ""
     var isStreaming = false
     var loadState: LoadState = .unloaded
+    var loadingStartTime: Date?
     var errorMessage: String?
     var isFetchingModels = false
     var tokenUsage: TokenUsage?
@@ -127,6 +128,7 @@ class ChatViewModel {
         let names = Set(resp.running.map { $0.model })
         await MainActor.run {
             runningModels = names
+            guard loadState != .loading else { return }
             if let running = names.first(where: { models.contains($0) }) {
                 selectedModel = running; loadState = .loaded
             } else {
@@ -137,28 +139,53 @@ class ChatViewModel {
     }
 
     func loadModel() async {
-        await MainActor.run { loadState = .loading }
+        await MainActor.run { loadState = .loading; loadingStartTime = Date() }
         let bgTask = BGTaskHandle(); bgTask.begin(name: "LlamaLoad")
         defer { bgTask.end() }
-        guard let url = URL(string: "\(serverURL)/v1/chat/completions") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 180
-        req.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "model": selectedModel,
-            "messages": [["role": "user", "content": "hi"]],
-            "max_tokens": 1, "stream": false
-        ])
-        do {
-            let (_, resp) = try await URLSession.shared.data(for: req)
-            let ok = (resp as? HTTPURLResponse)?.statusCode == 200
-            await MainActor.run {
-                loadState = ok ? .loaded : .unloaded
-                if ok { runningModels.insert(selectedModel) }
+
+        let modelToLoad = selectedModel
+
+        // Fire the completions request to trigger llama-swap to start loading the model.
+        // We don't await it — the /running poll below is the source of truth for readiness.
+        if let url = URL(string: "\(serverURL)/v1/chat/completions") {
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.timeoutInterval = 360
+            req.httpBody = try? JSONSerialization.data(withJSONObject: [
+                "model": modelToLoad,
+                "messages": [["role": "user", "content": "hi"]],
+                "max_tokens": 1, "stream": false
+            ])
+            Task { _ = try? await URLSession.shared.data(for: req) }
+        }
+
+        // Poll /running every 3s until the model is confirmed loaded (5-minute timeout).
+        let deadline = Date().addingTimeInterval(300)
+        while Date() < deadline {
+            try? await Task.sleep(for: .seconds(3))
+            let stillLoading = await MainActor.run { loadState == .loading }
+            guard stillLoading else { return }
+
+            guard let url = URL(string: "\(serverURL)/running"),
+                  let (data, _) = try? await URLSession.shared.data(from: url) else { continue }
+            struct Resp: Decodable { struct R: Decodable { let model: String }; let running: [R] }
+            guard let resp = try? JSONDecoder().decode(Resp.self, from: data) else { continue }
+            let names = Set(resp.running.map { $0.model })
+            if names.contains(modelToLoad) {
+                await MainActor.run {
+                    runningModels = names
+                    loadState = .loaded
+                    loadingStartTime = nil
+                }
+                return
             }
-        } catch {
-            await MainActor.run { loadState = .unloaded; errorMessage = error.localizedDescription }
+        }
+
+        await MainActor.run {
+            loadState = .unloaded
+            loadingStartTime = nil
+            errorMessage = "Model took too long to load"
         }
     }
 
