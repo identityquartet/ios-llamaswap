@@ -1,99 +1,26 @@
 import SwiftUI
-import SwiftData
 import UIKit
 
 // MARK: - Root
 
 struct RootView: View {
-    @State private var path: [Conversation] = []
-
     var body: some View {
-        NavigationStack(path: $path) {
-            ConversationsView(path: $path)
-                .navigationDestination(for: Conversation.self) { conv in
-                    ChatView(conversation: conv)
-                }
+        NavigationStack {
+            ChatView()
         }
-    }
-}
-
-// MARK: - Conversations list
-
-struct ConversationsView: View {
-    @Environment(\.modelContext) private var context
-    @Query(sort: \Conversation.createdAt, order: .reverse) private var conversations: [Conversation]
-    @Binding var path: [Conversation]
-
-    var body: some View {
-        Group {
-            if conversations.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
-                    Text("No conversations yet")
-                        .foregroundStyle(.secondary)
-                    Button("New Chat", action: newChat)
-                        .buttonStyle(.borderedProminent)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(conversations) { conv in
-                        Button { path.append(conv) } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(conv.title)
-                                    .lineLimit(1)
-                                    .foregroundStyle(.primary)
-                                Text(conv.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                    .onDelete { indexSet in
-                        for i in indexSet { context.delete(conversations[i]) }
-                        try? context.save()
-                    }
-                }
-            }
-        }
-        .navigationTitle("Conversations")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: newChat) {
-                    Image(systemName: "square.and.pencil")
-                }
-            }
-        }
-    }
-
-    private func newChat() {
-        let conv = Conversation()
-        context.insert(conv)
-        try? context.save()
-        path.append(conv)
     }
 }
 
 // MARK: - Chat view
 
 struct ChatView: View {
-    let conversation: Conversation
-    @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
-    @State private var vm: ChatViewModel
+    @State private var vm = ChatViewModel()
     @State private var showSettings = false
     @State private var showSystemPrompt = false
     @State private var showClearConfirm = false
     @State private var showPresetSave = false
     @State private var newPresetName = ""
-
-    init(conversation: Conversation) {
-        self.conversation = conversation
-        self._vm = State(wrappedValue: ChatViewModel(conversation: conversation))
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,7 +36,7 @@ struct ChatView: View {
                                 newPresetName: $newPresetName)
                 Divider()
             }
-            MessagesView(vm: vm, context: context)
+            MessagesView(vm: vm)
             if let usage = vm.tokenUsage {
                 HStack {
                     Spacer()
@@ -121,9 +48,9 @@ struct ChatView: View {
                 }
             }
             Divider()
-            InputBar(vm: vm, context: context)
+            InputBar(vm: vm)
         }
-        .navigationTitle(conversation.title.isEmpty ? "New Chat" : conversation.title)
+        .navigationTitle("New Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -146,7 +73,7 @@ struct ChatView: View {
             }
         }
         .confirmationDialog("Clear all messages?", isPresented: $showClearConfirm, titleVisibility: .visible) {
-            Button("Clear", role: .destructive) { vm.clearChat(context: context) }
+            Button("Clear", role: .destructive) { vm.clearChat() }
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet(vm: vm)
@@ -295,7 +222,6 @@ struct SystemPromptBar: View {
 
 struct MessagesView: View {
     let vm: ChatViewModel
-    let context: ModelContext
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -303,7 +229,7 @@ struct MessagesView: View {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(vm.messages) { msg in
                         MessageBubble(message: msg, isStreaming: vm.isStreaming && msg.id == vm.messages.last?.id) {
-                            Task { await vm.regenerateLastResponse(context: context) }
+                            Task { await vm.regenerateLastResponse() }
                         }
                         .id(msg.id)
                     }
@@ -506,7 +432,6 @@ struct CodeBlockView: View {
 
 struct InputBar: View {
     @Bindable var vm: ChatViewModel
-    let context: ModelContext
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -531,7 +456,7 @@ struct InputBar: View {
             } else {
                 Button {
                     focused = false
-                    Task { await vm.sendMessage(context: context) }
+                    Task { await vm.sendMessage() }
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 34))

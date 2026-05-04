@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import UIKit
 
 @main
@@ -8,7 +7,6 @@ struct LlamaSwapApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: Conversation.self)
     }
 }
 

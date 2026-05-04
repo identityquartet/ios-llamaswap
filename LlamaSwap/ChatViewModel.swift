@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import SwiftData
 
 struct ChatMessage: Identifiable {
     let id = UUID()
@@ -53,7 +52,6 @@ class ChatViewModel {
     var errorMessage: String?
     var isFetchingModels = false
     var tokenUsage: TokenUsage?
-    var conversation: Conversation?
 
     private var streamTask: Task<Void, Never>?
 
@@ -75,7 +73,7 @@ class ChatViewModel {
         }
     }
 
-    init(conversation: Conversation? = nil) {
+    init() {
         serverURL    = UserDefaults.standard.string(forKey: "serverURL") ?? "http://192.168.8.117:8081"
         defaultModel = UserDefaults.standard.string(forKey: "defaultModel") ?? ""
         temperature  = UserDefaults.standard.object(forKey: "temperature") as? Double ?? 0.7
@@ -87,12 +85,6 @@ class ChatViewModel {
             presets = decoded
         } else {
             presets = [:]
-        }
-
-        self.conversation = conversation
-        if let conv = conversation {
-            let sorted = conv.messages.sorted { $0.createdAt < $1.createdAt }
-            messages = sorted.map { ChatMessage(role: $0.role, content: $0.content) }
         }
     }
 
@@ -202,7 +194,7 @@ class ChatViewModel {
         streamTask?.cancel()
     }
 
-    func sendMessage(context: ModelContext) async {
+    func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isStreaming else { return }
 
@@ -211,40 +203,20 @@ class ChatViewModel {
             guard loadState == .loaded else { return }
         }
 
-        if conversation == nil {
-            let conv = Conversation(title: String(text.prefix(60)))
-            context.insert(conv)
-            conversation = conv
-            try? context.save()
-        }
-
         await MainActor.run { messages.append(ChatMessage(role: "user", content: text)); inputText = "" }
 
-        if let conv = conversation {
-            conv.messages.append(StoredMessage(role: "user", content: text))
-            try? context.save()
-        }
-
-        await streamResponse(context: context)
+        await streamResponse()
     }
 
-    func regenerateLastResponse(context: ModelContext) async {
+    func regenerateLastResponse() async {
         guard !isStreaming, messages.last?.isUser == false, messages.count >= 2 else { return }
 
         await MainActor.run { messages.removeLast() }
 
-        if let conv = conversation {
-            let sorted = conv.messages.sorted { $0.createdAt < $1.createdAt }
-            if let last = sorted.last, last.role == "assistant" {
-                context.delete(last)
-                try? context.save()
-            }
-        }
-
-        await streamResponse(context: context)
+        await streamResponse()
     }
 
-    private func streamResponse(context: ModelContext) async {
+    private func streamResponse() async {
         await MainActor.run {
             messages.append(ChatMessage(role: "assistant", content: ""))
             isStreaming = true
@@ -315,23 +287,13 @@ class ChatViewModel {
                 }
             }
 
-            let assistantContent = await MainActor.run { messages.last?.content ?? "" }
-            if let conv = conversation, !assistantContent.isEmpty, !Task.isCancelled {
-                conv.messages.append(StoredMessage(role: "assistant", content: assistantContent))
-                try? context.save()
-            }
         }
 
         await streamTask?.value
     }
 
-    func clearChat(context: ModelContext) {
+    func clearChat() {
         messages = []
         tokenUsage = nil
-        if let conv = conversation {
-            for msg in conv.messages { context.delete(msg) }
-            conv.messages = []
-            try? context.save()
-        }
     }
 }
