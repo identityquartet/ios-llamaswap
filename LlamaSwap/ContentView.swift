@@ -40,7 +40,7 @@ struct ChatView: View {
             if let usage = vm.tokenUsage {
                 HStack {
                     Spacer()
-                    Text("\(usage.promptTokens) in · \(usage.completionTokens) out")
+                    Text("\(usage.promptTokens) in · \(usage.completionTokens) out · \(String(format: "%.1f", usage.tokensPerSecond)) tok/s")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal)

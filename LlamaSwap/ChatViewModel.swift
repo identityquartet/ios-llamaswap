@@ -11,6 +11,7 @@ struct ChatMessage: Identifiable {
 struct TokenUsage {
     let promptTokens: Int
     let completionTokens: Int
+    let tokensPerSecond: Double
 }
 
 @Observable
@@ -263,19 +264,23 @@ class ChatViewModel {
                     struct Usage: Decodable { let prompt_tokens: Int; let completion_tokens: Int }
                     let usage: Usage?
                 }
+                var firstTokenTime: Date?
                 for try await line in stream.lines {
                     if Task.isCancelled { break }
                     guard line.hasPrefix("data: "), line != "data: [DONE]",
                           let data = line.dropFirst(6).data(using: .utf8),
                           let chunk = try? JSONDecoder().decode(Chunk.self, from: data)
                     else { continue }
-                    if let content = chunk.choices.first?.delta.content {
+                    if let content = chunk.choices.first?.delta.content, !content.isEmpty {
+                        if firstTokenTime == nil { firstTokenTime = Date() }
                         await MainActor.run { messages[messages.count - 1].content += content }
                     }
                     if let u = chunk.usage {
+                        let tps = firstTokenTime.map { Double(u.completion_tokens) / Date().timeIntervalSince($0) } ?? 0
                         await MainActor.run {
                             tokenUsage = TokenUsage(promptTokens: u.prompt_tokens,
-                                                    completionTokens: u.completion_tokens)
+                                                    completionTokens: u.completion_tokens,
+                                                    tokensPerSecond: tps)
                         }
                     }
                 }
