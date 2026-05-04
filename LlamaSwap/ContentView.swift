@@ -79,12 +79,6 @@ struct ChatView: View {
             SettingsSheet(vm: vm)
         }
         .task { await vm.fetchModels() }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                await vm.fetchRunning()
-            }
-        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await vm.fetchRunning() } }
         }
