@@ -276,7 +276,7 @@ struct GooseSettingsSheet: View {
 
                 if !relay.availableModels.isEmpty {
                     Section {
-                        ForEach(relay.availableModels, id: \.self) { model in
+                        ForEach(relay.availableModels, id: \.self) { (model: String) in
                             HStack {
                                 Text(model)
                                 Spacer()
