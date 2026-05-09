@@ -1,12 +1,36 @@
 import SwiftUI
 import UIKit
 
+// MARK: - App mode
+
+enum AppMode: String { case llama, goose }
+
 // MARK: - Root
 
 struct RootView: View {
+    @AppStorage("appMode") private var mode: AppMode = .llama
+    @State private var llamaVM = ChatViewModel()
+    @State private var relay = RelayClient()
+
     var body: some View {
         NavigationStack {
-            ChatView()
+            Group {
+                if mode == .llama {
+                    ChatView(vm: llamaVM)
+                } else {
+                    GooseChatView(relay: relay)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("", selection: $mode) {
+                        Text("Llama").tag(AppMode.llama)
+                        Text("Goose").tag(AppMode.goose)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 160)
+                }
+            }
         }
     }
 }
@@ -15,7 +39,7 @@ struct RootView: View {
 
 struct ChatView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var vm = ChatViewModel()
+    var vm: ChatViewModel
     @State private var showSettings = false
     @State private var showSystemPrompt = false
     @State private var showClearConfirm = false
@@ -50,8 +74,6 @@ struct ChatView: View {
             Divider()
             InputBar(vm: vm)
         }
-        .navigationTitle("New Chat")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {

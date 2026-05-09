@@ -12,6 +12,9 @@
 		BB000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000012 /* Assets.xcassets */; };
 		BB000000000000000000004 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000013 /* ChatViewModel.swift */; };
 		BB000000000000000000005 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000015 /* Keychain.swift */; };
+		BB000000000000000000006 /* GooseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000016 /* GooseModels.swift */; };
+		BB000000000000000000007 /* RelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000017 /* RelayClient.swift */; };
+		BB000000000000000000008 /* GooseChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000018 /* GooseChatView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +25,9 @@
 		BB000000000000000000013 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		BB000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB000000000000000000015 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		BB000000000000000000016 /* GooseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseModels.swift; sourceTree = "<group>"; };
+		BB000000000000000000017 /* RelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClient.swift; sourceTree = "<group>"; };
+		BB000000000000000000018 /* GooseChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseChatView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +58,9 @@
 				BB000000000000000000012 /* Assets.xcassets */,
 				BB000000000000000000014 /* Info.plist */,
 				BB000000000000000000015 /* Keychain.swift */,
+				BB000000000000000000016 /* GooseModels.swift */,
+				BB000000000000000000017 /* RelayClient.swift */,
+				BB000000000000000000018 /* GooseChatView.swift */,
 			);
 			path = LlamaSwap;
 			sourceTree = "<group>";
@@ -137,6 +146,9 @@
 				BB000000000000000000002 /* ContentView.swift in Sources */,
 				BB000000000000000000004 /* ChatViewModel.swift in Sources */,
 				BB000000000000000000005 /* Keychain.swift in Sources */,
+				BB000000000000000000006 /* GooseModels.swift in Sources */,
+				BB000000000000000000007 /* RelayClient.swift in Sources */,
+				BB000000000000000000008 /* GooseChatView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
