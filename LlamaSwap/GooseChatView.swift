@@ -281,7 +281,7 @@ struct GooseSettingsSheet: View {
                                 Text(model)
                                 Spacer()
                                 if relay.currentModel == model {
-                                    Image(systemName: "checkmark").foregroundStyle(.accentColor)
+                                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
                                 }
                             }
                             .contentShape(Rectangle())
