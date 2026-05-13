@@ -255,18 +255,18 @@ struct MessagesView: View {
                             Text("Thinking...").font(.caption).foregroundStyle(.secondary)
                         }
                         .padding(.horizontal)
-                        .id("thinking")
                     }
+                    Color.clear.frame(height: 1).id("__scroll_end__")
                 }
                 .padding()
             }
             .onChange(of: vm.messages.last?.content) {
                 withAnimation(.easeOut(duration: 0.1)) {
-                    if let last = vm.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    proxy.scrollTo("__scroll_end__", anchor: .bottom)
                 }
             }
             .onChange(of: vm.isStreaming) {
-                if vm.isStreaming { proxy.scrollTo("thinking", anchor: .bottom) }
+                proxy.scrollTo("__scroll_end__", anchor: .bottom)
             }
         }
     }
